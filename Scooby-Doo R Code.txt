@@ -1,0 +1,100 @@
+#installing TuesdayR Package to get data#
+install.packages("tidytuesdayR")
+#loading relevant libraries for analysis#
+library(tidyverse)
+library(ggplot2)
+library(tidytuesdayR)
+
+#getting data#
+tuesdata <- tidytuesdayR::tt_load('2021-07-13')
+scooby <- tuesdata$scoobydoo
+
+#taking a peek at Scooby-Doo data#
+glimpse(scooby)
+
+#fixing IMDB & Including Relevant Variables for Analysis# 
+scooby_sm <- scooby %>% 
+  select(series_name:format) %>% 
+  mutate(imdb = as.double(imdb))
+
+#Exploring IMDB Ratings Over Time#
+ggplot(scooby_sm, aes(x = date_aired,
+                      y = imdb,
+                      color = format)) +
+  geom_point() +
+  scale_color_brewer(palette = "Dark1")
+
+#format exploration#
+table(scooby_sm$format)
+crossover <- filter(scooby_sm, format == "Crossover")
+View(crossover)
+
+#Filtering out data, making sure only includes Scooby-Doo tv episodes#
+scooby_sm <- scooby_sm %>% 
+  filter(format != "Crossover",
+         format != "Movie", 
+         format != "Movie (Theatrical)")
+table(scooby_sm$format)
+View(scooby_sm)
+
+#combining segmented episodes#
+segmented <- scooby_sm %>% 
+  filter(format == "TV Series (segmented)") %>% 
+  group_by(date_aired) %>%  
+  summarize(imdb = mean(imdb),
+            network = unique(network),
+            series_name = unique(series_name),
+            total_runtime = sum(run_time))
+View(segmented)
+
+#putting segmented and normal episodes together#
+non_seg <- scooby_sm %>% 
+  filter(format != "TV Series (segmented)") %>%  
+  select(date_aired,
+         imdb,
+         network,
+         series_name,
+         total_runtime = run_time)
+scooby_tidied <- rbind(non_seg,
+                       segmented)
+View(scooby_tidied)
+
+#visually seeing the dataset#
+ggplot(scooby_tidied, aes(x = date_aired,
+                          y = imdb,
+                          col = network)) +
+  geom_point() +
+  scale_color_brewer(palette = "Dark2")
+
+#exploring the woes of CW#
+cw <- scooby_tidied %>% 
+  filter(network == "The CW")
+View(cw)
+
+#statistical test among the group -- ANOVA analysis#
+model <- aov(imdb ~ network, 
+             data = scooby_tidied)
+summary(model)
+
+#producing bar chart to display network differences on IMDB scores#
+#bar chart#
+scooby_tidied %>% 
+  group_by(network) %>% 
+  summarize(mean_imdb = mean(imdb, na.rm = TRUE)) %>% 
+  #making bar chart tallest to shortest & coloring#
+  ggplot(aes(x = fct_reorder(network, -mean_imdb), 
+             y = mean_imdb,
+             fill = network)) + 
+  geom_col() +
+  #putting numbers on top of chart, rounding decimal, nudge to clean#
+  geom_text(aes(label = round(mean_imdb, 1)),
+            nudge_y = .5) +
+  scale_fill_brewer(palette = "Dark2") +
+  #adding labels#
+  labs(x = "Network",
+       y = "Mean imdb rating",
+       title = "Scooby-Doo Network Analysis") +
+  #getting rid of legend#
+  theme(legend.position = "none",
+        #rotating text to avoid overlaps#
+        axis.text.x = element_text(angle = 15))
